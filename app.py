@@ -1,10 +1,26 @@
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from flask_cors import CORS
+from flask_login import (UserMixin, login_user, LoginManager,
+                         login_required, logout_user)
+
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'your_secret_key'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///ecommerce.db'
 
+login_manager = LoginManager()
 db = SQLAlchemy(app)
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+CORS(app)
+
+
+class User(db.Model, UserMixin):
+    """ User model for authentication """
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password = db.Column(db.String(80), nullable=False)
 
 
 class Product(db.Model):
@@ -15,6 +31,7 @@ class Product(db.Model):
 
 
 @app.route("/api/products/add", methods=["POST"])
+@login_required
 def add_product():
 
     data = request.json
@@ -34,6 +51,7 @@ def add_product():
 
 
 @app.route("/api/products/delete/<int:product_id>", methods=["DELETE"])
+@login_required
 def delete_product(product_id):
     """ Delete a product by its ID """
     product = Product.query.get(product_id)
@@ -64,6 +82,7 @@ def get_product_details(product_id):
 
 
 @app.route("/api/products/update/<int:product_id>", methods=["PUT"])
+@login_required
 def update_product(product_id):
     """ Update a product by its ID """
     data = request.json
@@ -98,6 +117,37 @@ def get_products():
 
     return jsonify(product_list)
 
+
+# -----------------------------------------------------------------------------
+# Autentication Endpoints
+@login_manager.user_loader
+def load_user(user_id):
+    """ Load user for Flask-Login """
+    return User.query.get(int(user_id))
+
+
+@app.route("/api/login", methods=["POST"])
+def login():
+    """ User login endpoint """
+    data = request.json
+    user = User.query.filter_by(username=data.get("username")).first()
+    
+    if user and data.get("password") == user.password:
+        login_user(user)
+        return jsonify({"message": "Logged in successfully"})
+        
+    return jsonify({"message": "Unauthorized. Invalid credentials"}), 401
+
+
+@app.route("/api/logout", methods=["POST"])
+@login_required
+def logout():
+    """ User logout endpoint """
+
+    logout_user()
+    return jsonify({"message": "Logged out successfully"})
+
+# -----------------------------------------------------------------------------
 
 @app.route("/")
 def hello_world():
